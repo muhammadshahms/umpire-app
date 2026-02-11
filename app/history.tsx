@@ -54,7 +54,11 @@ export default function HistoryScreen() {
                     </View>
                 }
                 renderItem={({ item }) => (
-                    <Card style={styles.card} mode="elevated">
+                    <Card
+                        style={styles.card}
+                        mode="elevated"
+                        onPress={() => router.push({ pathname: '/match/[id]', params: { id: item.id } })}
+                    >
                         <Card.Content>
                             <View style={styles.cardHeader}>
                                 <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>

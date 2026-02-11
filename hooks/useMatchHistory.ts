@@ -25,6 +25,7 @@ export const useMatchHistory = () => {
 
     const saveMatch = useCallback(async (match: Match) => {
         try {
+            // 1. Save summary to history list
             const existing = await AsyncStorage.getItem(HISTORY_KEY);
             const items: MatchHistoryItem[] = existing ? JSON.parse(existing) : [];
 
@@ -34,6 +35,9 @@ export const useMatchHistory = () => {
             const secondScore = match.secondInnings
                 ? `${match.secondInnings.totalRuns}/${match.secondInnings.totalWickets}`
                 : '-';
+
+            // Check if update or new
+            const existingIndex = items.findIndex(i => i.id === match.id);
 
             const item: MatchHistoryItem = {
                 id: match.id,
@@ -47,22 +51,45 @@ export const useMatchHistory = () => {
                 winnerName: match.winnerName,
             };
 
-            items.unshift(item);
+            if (existingIndex >= 0) {
+                items[existingIndex] = item;
+            } else {
+                items.unshift(item);
+            }
+
             await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(items));
             setHistory(items);
+
+            // 2. Save FULL match details to separate key
+            await AsyncStorage.setItem(`match_${match.id}`, JSON.stringify(match));
+
         } catch (e) {
             console.error('Failed to save match history:', e);
         }
     }, []);
 
+    const getMatchDetails = useCallback(async (id: string): Promise<Match | null> => {
+        try {
+            const data = await AsyncStorage.getItem(`match_${id}`);
+            return data ? JSON.parse(data) : null;
+        } catch (e) {
+            console.error('Failed to load match details:', e);
+            return null;
+        }
+    }, []);
+
     const clearHistory = useCallback(async () => {
         try {
-            await AsyncStorage.removeItem(HISTORY_KEY);
+            // Ideally we should delete all match_ keys too, but for now clearing the list is enough to hide them
+            // A more robust app would track all keys or use a collection pattern
+            const keys = await AsyncStorage.getAllKeys();
+            const matchKeys = keys.filter(k => k.startsWith('match_') || k === HISTORY_KEY);
+            await AsyncStorage.multiRemove(matchKeys);
             setHistory([]);
         } catch (e) {
             console.error('Failed to clear history:', e);
         }
     }, []);
 
-    return { history, loading, loadHistory, saveMatch, clearHistory };
+    return { history, loading, loadHistory, saveMatch, getMatchDetails, clearHistory };
 };
