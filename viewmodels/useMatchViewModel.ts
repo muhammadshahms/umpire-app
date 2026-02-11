@@ -9,19 +9,26 @@ export const useMatchViewModel = () => {
     const [lastBowlerId, setLastBowlerId] = useState<string | undefined>(undefined);
     const [matchResult, setMatchResult] = useState<{ result: string; winnerName?: string } | null>(null);
     const [previousSnapshot, setPreviousSnapshot] = useState<{ innings: Innings; matchState: Match } | null>(null);
+    const [needsBatsmanSelection, setNeedsBatsmanSelection] = useState(false);
+    const [outBatsmanId, setOutBatsmanId] = useState<string | null>(null);
 
-    const startMatch = useCallback((teamA: Team, teamB: Team, totalOvers: number) => {
-        const newMatch: Match = {
-            id: Date.now().toString(),
-            teamA,
-            teamB,
-            totalOvers,
-            currentInningsNumber: 1,
-            status: 'InProgress',
-            firstInnings: createInnings(teamA.id, teamB.id, teamA.players[0].id, teamA.players[1].id, teamB.players[0].id),
-        };
-        setMatch(newMatch);
-    }, []);
+    const createBatsmanStats = (playerId: string) => ({
+        playerId,
+        runs: 0,
+        balls: 0,
+        fours: 0,
+        sixes: 0,
+        isOut: false,
+    });
+
+    const createBowlerStats = (playerId: string) => ({
+        playerId,
+        overs: 0,
+        balls: 0,
+        runsConceded: 0,
+        wickets: 0,
+        maidens: 0,
+    });
 
     const createInnings = (battingTeamId: string, bowlingTeamId: string, strikerId: string, nonStrikerId: string, bowlerId: string): Innings => {
         return {
@@ -50,23 +57,18 @@ export const useMatchViewModel = () => {
         };
     };
 
-    const createBatsmanStats = (playerId: string) => ({
-        playerId,
-        runs: 0,
-        balls: 0,
-        fours: 0,
-        sixes: 0,
-        isOut: false,
-    });
-
-    const createBowlerStats = (playerId: string) => ({
-        playerId,
-        overs: 0,
-        balls: 0,
-        runsConceded: 0,
-        wickets: 0,
-        maidens: 0,
-    });
+    const startMatch = useCallback((teamA: Team, teamB: Team, totalOvers: number) => {
+        const newMatch: Match = {
+            id: Date.now().toString(),
+            teamA,
+            teamB,
+            totalOvers,
+            currentInningsNumber: 1,
+            status: 'InProgress',
+            firstInnings: createInnings(teamA.id, teamB.id, teamA.players[0].id, teamA.players[1].id, teamB.players[0].id),
+        };
+        setMatch(newMatch);
+    }, []);
 
     const getCurrentInnings = useCallback(() => {
         if (!match) return null;
@@ -123,11 +125,26 @@ export const useMatchViewModel = () => {
         return null;
     }, []);
 
+    const finishMatch = (result: { winnerId?: string; winnerName?: string; result: string }, finalInnings: Innings) => {
+        setMatchResult(result);
+        setMatch(prev => {
+            if (!prev) return null;
+            return {
+                ...prev,
+                secondInnings: finalInnings,
+                status: 'Completed',
+                winnerId: result.winnerId,
+                winnerName: result.winnerName,
+                result: result.result,
+            };
+        });
+    };
+
     const scoreBall = useCallback((runs: number, extraType: ExtraType = 'None', isWicket: boolean = false, wicketType?: WicketType, playerOutId?: string) => {
         const innings = getCurrentInnings();
         if (!innings || !match) return;
 
-        // Save snapshot for undo (deep copy)
+        // Save snapshot for undo
         setPreviousSnapshot({
             innings: JSON.parse(JSON.stringify(innings)),
             matchState: JSON.parse(JSON.stringify(match)),
@@ -140,6 +157,8 @@ export const useMatchViewModel = () => {
         const isBye = extraType === 'B';
         const isLegBye = extraType === 'LB';
         const isValidBall = !isWide && !isNoBall;
+
+        if (needsBatsmanSelection) setNeedsBatsmanSelection(false);
 
         if (isWide || isNoBall) {
             extraRuns = 1;
@@ -159,8 +178,7 @@ export const useMatchViewModel = () => {
             if (runs === 4) striker.fours += 1;
             if (runs === 6) striker.sixes += 1;
         } else if (isValidBall) {
-            // Bye or Leg Bye — count the ball but NOT runs for batsman
-            striker.balls += 1;
+            striker.balls += 1; // Count ball but not run for batsman
         }
 
         // Updating Bowler
@@ -237,35 +255,23 @@ export const useMatchViewModel = () => {
             bowlingStats: newBowlingStats,
         };
 
-        // Check if over is complete
+        // --- Check for Over Completion ---
         if (updatedOver.validBalls >= 6) {
             updatedInnings.allOvers = [...updatedInnings.allOvers, updatedOver];
 
             // Switch strike at end of over
             [updatedInnings.strikerId, updatedInnings.nonStrikerId] = [updatedInnings.nonStrikerId, updatedInnings.strikerId];
 
-            // Check if innings is complete (all overs bowled)
+            // Check if Innings Complete (All Overs)
             if (updatedInnings.allOvers.length >= match.totalOvers) {
                 const allBalls: Delivery[] = [];
                 updatedInnings.allOvers.forEach(over => over.deliveries.forEach(d => allBalls.push(d)));
                 setInningsDeliveries(allBalls);
 
-                // Check for match result in 2nd innings
+                // If 2nd innings, check result
                 const result = checkMatchResult(updatedInnings, match);
                 if (result) {
-                    updateInnings(updatedInnings);
-                    setMatch(prev => {
-                        if (!prev) return null;
-                        return {
-                            ...prev,
-                            [prev.currentInningsNumber === 1 ? 'firstInnings' : 'secondInnings']: updatedInnings,
-                            status: 'Completed',
-                            winnerId: result.winnerId,
-                            winnerName: result.winnerName,
-                            result: result.result,
-                        };
-                    });
-                    setMatchResult(result);
+                    finishMatch(result, updatedInnings);
                     return;
                 }
 
@@ -274,12 +280,12 @@ export const useMatchViewModel = () => {
                 return;
             }
 
-            // Over complete but innings not done — need new bowler
+            // Over complete, innings continues -> Bowler Selection
             setLastBowlerId(innings.currentBowlerId);
             updatedInnings.currentOver = {
                 overNumber: updatedInnings.allOvers.length + 1,
                 deliveries: [],
-                bowlerId: '',
+                bowlerId: '', // Placeholder until selection
                 validBalls: 0,
             };
 
@@ -288,63 +294,46 @@ export const useMatchViewModel = () => {
             return;
         }
 
-        // Check for match result mid-over (target reached in 2nd innings)
+        // --- Over NOT Complete ---
+
+        // Check for 2nd Innings Win (Target Reached mid-over)
         if (match.currentInningsNumber === 2) {
             const result = checkMatchResult(updatedInnings, match);
             if (result) {
-                setMatch(prev => {
-                    if (!prev) return null;
-                    return {
-                        ...prev,
-                        [prev.currentInningsNumber === 1 ? 'firstInnings' : 'secondInnings']: updatedInnings,
-                        status: 'Completed',
-                        winnerId: result.winnerId,
-                        winnerName: result.winnerName,
-                        result: result.result,
-                    };
-                });
-                setMatchResult(result);
+                finishMatch(result, updatedInnings);
                 return;
             }
         }
 
-        // Check all out
-        if (match) {
-            const battingTeam = updatedInnings.battingTeamId === match.teamA.id ? match.teamA : match.teamB;
-            if (updatedInnings.totalWickets >= battingTeam.players.length - 1) {
-                // All out
+        // Check for Wicket -> Batsman Selection
+        if (isWicket && playerOutId) {
+            const battingTeamSize = match.currentInningsNumber === 1 ? match.teamA.players.length : match.teamB.players.length;
+            // Check if All Out
+            if (updatedInnings.totalWickets >= battingTeamSize - 1) {
+                // All Out logic
                 const allBalls: Delivery[] = [];
                 updatedInnings.allOvers.forEach(over => over.deliveries.forEach(d => allBalls.push(d)));
                 updatedOver.deliveries.forEach(d => allBalls.push(d));
                 setInningsDeliveries(allBalls);
 
-                if (match.currentInningsNumber === 2) {
-                    const result = checkMatchResult(updatedInnings, match);
-                    if (result) {
-                        setMatch(prev => {
-                            if (!prev) return null;
-                            return {
-                                ...prev,
-                                secondInnings: updatedInnings,
-                                status: 'Completed',
-                                winnerId: result.winnerId,
-                                winnerName: result.winnerName,
-                                result: result.result,
-                            };
-                        });
-                        setMatchResult(result);
-                        return;
-                    }
+                const result = checkMatchResult(updatedInnings, match);
+                if (result) {
+                    finishMatch(result, updatedInnings);
+                    return;
                 }
-
                 setInningsComplete(true);
                 updateInnings(updatedInnings);
                 return;
+            } else {
+                // Not All Out -> Select New Batsman
+                setNeedsBatsmanSelection(true);
+                setOutBatsmanId(playerOutId);
             }
         }
 
         updateInnings(updatedInnings);
-    }, [match, getCurrentInnings, updateInnings, checkMatchResult]);
+
+    }, [match, getCurrentInnings, updateInnings, checkMatchResult, needsBatsmanSelection]);
 
     const confirmNewBowler = useCallback((bowlerId: string) => {
         const innings = getCurrentInnings();
@@ -360,35 +349,49 @@ export const useMatchViewModel = () => {
     }, [getCurrentInnings, updateInnings]);
 
     const setNewBowler = useCallback((bowlerId: string) => {
-        const innings = getCurrentInnings();
-        if (!innings) return;
-        const newStats = innings.bowlingStats[bowlerId] || createBowlerStats(bowlerId);
-        updateInnings({
-            ...innings,
-            currentBowlerId: bowlerId,
-            currentOver: { ...innings.currentOver, bowlerId },
-            bowlingStats: { ...innings.bowlingStats, [bowlerId]: newStats }
-        });
-    }, [getCurrentInnings, updateInnings]);
+        confirmNewBowler(bowlerId);
+    }, [confirmNewBowler]);
 
     const setNewBatsman = useCallback((oldBatsmanId: string, newBatsmanId: string) => {
+        // This was for manual overrides, simpler to reuse confirmNextBatsman logic if needed
+        // For now leaving as placeholder or separate utility
+    }, []);
+
+    const confirmNextBatsman = useCallback((playerId: string) => {
         const innings = getCurrentInnings();
-        if (!innings) return;
-        let isStriker = innings.strikerId === oldBatsmanId;
-        updateInnings({
+        if (!innings || !match || !outBatsmanId) return;
+
+        const newBattingStats = { ...innings.battingStats };
+        if (!newBattingStats[playerId]) {
+            newBattingStats[playerId] = createBatsmanStats(playerId);
+        }
+
+        let newStriker = innings.strikerId;
+        let newNonStriker = innings.nonStrikerId;
+
+        if (newStriker === outBatsmanId) {
+            newStriker = playerId;
+        } else if (newNonStriker === outBatsmanId) {
+            newNonStriker = playerId;
+        }
+
+        const updatedInnings: Innings = {
             ...innings,
-            strikerId: isStriker ? newBatsmanId : innings.strikerId,
-            nonStrikerId: isStriker ? innings.nonStrikerId : newBatsmanId,
-            battingStats: { ...innings.battingStats, [newBatsmanId]: createBatsmanStats(newBatsmanId) }
-        });
-    }, [getCurrentInnings, updateInnings]);
+            strikerId: newStriker,
+            nonStrikerId: newNonStriker,
+            battingStats: newBattingStats,
+        };
+
+        updateInnings(updatedInnings);
+        setNeedsBatsmanSelection(false);
+        setOutBatsmanId(null);
+    }, [match, getCurrentInnings, outBatsmanId, updateInnings]);
 
     const startSecondInnings = useCallback(() => {
         if (!match) return;
         setInningsComplete(false);
         setInningsDeliveries([]);
 
-        // Swap: team that was bowling now bats
         const newBattingTeam = match.firstInnings!.bowlingTeamId === match.teamA.id ? match.teamA : match.teamB;
         const newBowlingTeam = match.firstInnings!.battingTeamId === match.teamA.id ? match.teamA : match.teamB;
 
@@ -419,6 +422,8 @@ export const useMatchViewModel = () => {
         if (!previousSnapshot) return;
         setMatch(previousSnapshot.matchState);
         setNeedsBowlerSelection(false);
+        setNeedsBatsmanSelection(false);
+        setOutBatsmanId(null);
         setInningsComplete(false);
         setMatchResult(null);
         setPreviousSnapshot(null);
@@ -443,5 +448,7 @@ export const useMatchViewModel = () => {
         matchResult,
         undoLastBall,
         canUndo,
+        needsBatsmanSelection,
+        confirmNextBatsman,
     };
 };

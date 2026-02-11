@@ -14,6 +14,7 @@ import {
     useTheme
 } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { BatsmanSelectionModal } from '../../components/BatsmanSelectionModal';
 import { BowlerSelectionModal } from '../../components/BowlerSelectionModal';
 import { InningsCompleteModal } from '../../components/InningsCompleteModal';
 import { MatchResultModal } from '../../components/MatchResultModal';
@@ -44,6 +45,8 @@ export default function MatchScreen() {
         matchResult,
         undoLastBall,
         canUndo,
+        needsBatsmanSelection,
+        confirmNextBatsman,
     } = useMatchViewModel();
 
     // Dialog State
@@ -417,6 +420,14 @@ export default function MatchScreen() {
                 players={bowlingTeam.players}
                 lastBowlerId={lastBowlerId}
                 onSelect={confirmNewBowler}
+            />
+
+            {/* Batsman Selection Modal */}
+            <BatsmanSelectionModal
+                visible={needsBatsmanSelection}
+                players={battingTeam.players}
+                battingStats={innings.battingStats}
+                onSelect={confirmNextBatsman}
             />
 
             {/* Scorecard Bottom Sheet */}
