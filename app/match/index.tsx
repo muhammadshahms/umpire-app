@@ -7,13 +7,18 @@ import {
     Card,
     DataTable,
     Dialog,
+    IconButton,
     Portal,
     Surface,
     Text,
     useTheme
 } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { BowlerSelectionModal } from '../../components/BowlerSelectionModal';
 import { InningsCompleteModal } from '../../components/InningsCompleteModal';
+import { MatchResultModal } from '../../components/MatchResultModal';
+import { ScorecardBottomSheet } from '../../components/ScorecardBottomSheet';
+import { useMatchHistory } from '../../hooks/useMatchHistory';
 import { Team } from '../../models/types';
 import { useMatchViewModel } from '../../viewmodels/useMatchViewModel';
 
@@ -22,12 +27,31 @@ export default function MatchScreen() {
     const theme = useTheme();
     const params = useLocalSearchParams();
     const { teamA, teamB, overs } = params;
+    const { saveMatch } = useMatchHistory();
 
-    const { match, startMatch, scoreBall, getCurrentInnings, inningsComplete, inningsDeliveries, resetInningsComplete } = useMatchViewModel();
+    const {
+        match,
+        startMatch,
+        scoreBall,
+        getCurrentInnings,
+        inningsComplete,
+        inningsDeliveries,
+        resetInningsComplete,
+        needsBowlerSelection,
+        lastBowlerId,
+        confirmNewBowler,
+        startSecondInnings,
+        matchResult,
+        undoLastBall,
+        canUndo,
+    } = useMatchViewModel();
 
     // Dialog State
     const [wicketDialogVisible, setWicketDialogVisible] = useState(false);
     const [selectedOutPlayerId, setSelectedOutPlayerId] = useState<string | null>(null);
+    const [scorecardVisible, setScorecardVisible] = useState(false);
+    const [byeDialogVisible, setByeDialogVisible] = useState(false);
+    const [byeDialogType, setByeDialogType] = useState<'B' | 'LB'>('B');
 
     useEffect(() => {
         if (teamA && teamB && overs) {
@@ -75,6 +99,16 @@ export default function MatchScreen() {
         scoreBall(0, 'NB');
     };
 
+    const openByeDialog = (type: 'B' | 'LB') => {
+        setByeDialogType(type);
+        setByeDialogVisible(true);
+    };
+
+    const confirmBye = (runs: number) => {
+        scoreBall(runs, byeDialogType);
+        setByeDialogVisible(false);
+    };
+
     const handleWicketClick = () => {
         setSelectedOutPlayerId(innings.strikerId); // Default to striker
         setWicketDialogVisible(true);
@@ -87,18 +121,52 @@ export default function MatchScreen() {
         }
     };
 
+    const handleInningsCompleteClose = () => {
+        if (match.currentInningsNumber === 1) {
+            startSecondInnings();
+        } else {
+            resetInningsComplete();
+        }
+    };
+
+    const handleSaveAndExit = async () => {
+        if (match) {
+            await saveMatch(match);
+        }
+        router.replace('/');
+    };
+
     const getBallCircleStyle = (d: any) => {
         if (d.isWicket) return { backgroundColor: '#F44336' };
         if (d.extraType === 'WD' || d.extraType === 'NB') return { backgroundColor: '#FF9800' };
+        if (d.extraType === 'B' || d.extraType === 'LB') return { backgroundColor: '#00BCD4' };
         if (d.runs === 4) return { backgroundColor: '#4CAF50' };
         if (d.runs === 6) return { backgroundColor: '#673AB7' };
         if (d.runs === 0) return { backgroundColor: '#9E9E9E' };
         return { backgroundColor: '#2196F3' };
     };
 
+    const getBallLabel = (d: any) => {
+        if (d.isWicket) return 'W';
+        if (d.extraType === 'WD') return 'WD';
+        if (d.extraType === 'NB') return 'NB';
+        if (d.extraType === 'B') return `${d.runs}B`;
+        if (d.extraType === 'LB') return `${d.runs}LB`;
+        if (d.extraType !== 'None') return d.extraType;
+        return d.runs.toString();
+    };
+
+    const firstInningsScore = match.firstInnings
+        ? `${match.firstInnings.totalRuns}/${match.firstInnings.totalWickets}`
+        : '-';
+    const secondInningsScore = match.secondInnings
+        ? `${match.secondInnings.totalRuns}/${match.secondInnings.totalWickets}`
+        : '-';
+
     return (
         <SafeAreaView style={styles.container}>
             <Portal>
+                {/* Wicket Dialog */}
                 <Dialog visible={wicketDialogVisible} onDismiss={() => setWicketDialogVisible(false)}>
                     <Dialog.Title>Wicket! ☝️</Dialog.Title>
                     <Dialog.Content>
@@ -125,14 +193,81 @@ export default function MatchScreen() {
                         <Button theme={{ colors: { primary: '#F44336' } }} onPress={confirmWicket}>Confirm Wicket</Button>
                     </Dialog.Actions>
                 </Dialog>
+
+                {/* Bye / Leg Bye Run Selection Dialog */}
+                <Dialog visible={byeDialogVisible} onDismiss={() => setByeDialogVisible(false)}>
+                    <Dialog.Title>{byeDialogType === 'B' ? '🏃 Bye Runs' : '🦵 Leg Bye Runs'}</Dialog.Title>
+                    <Dialog.Content>
+                        <Text variant="bodyMedium" style={{ marginBottom: 15 }}>How many {byeDialogType === 'B' ? 'bye' : 'leg bye'} runs?</Text>
+                        <View style={styles.byeRunsRow}>
+                            {[1, 2, 3, 4].map(r => (
+                                <Button
+                                    key={r}
+                                    mode="contained"
+                                    buttonColor="#00BCD4"
+                                    style={styles.byeRunBtn}
+                                    contentStyle={styles.byeRunBtnContent}
+                                    labelStyle={styles.byeRunBtnLabel}
+                                    onPress={() => confirmBye(r)}
+                                >
+                                    {r}
+                                </Button>
+                            ))}
+                        </View>
+                    </Dialog.Content>
+                    <Dialog.Actions>
+                        <Button onPress={() => setByeDialogVisible(false)}>Cancel</Button>
+                    </Dialog.Actions>
+                </Dialog>
             </Portal>
 
             <Surface style={styles.header} elevation={4}>
+                {/* Both Teams Mini Scoreboard */}
+                {match.currentInningsNumber === 2 && match.firstInnings && (
+                    <View style={styles.miniScoreboard}>
+                        <View style={styles.miniTeam}>
+                            <Text variant="labelSmall" style={styles.miniTeamName}>{match.teamA.name}</Text>
+                            <Text variant="labelMedium" style={styles.miniScore}>
+                                {match.firstInnings.battingTeamId === match.teamA.id
+                                    ? `${match.firstInnings.totalRuns}/${match.firstInnings.totalWickets}`
+                                    : innings.battingTeamId === match.teamA.id
+                                        ? `${innings.totalRuns}/${innings.totalWickets}`
+                                        : '-'}
+                            </Text>
+                        </View>
+                        <Text variant="labelSmall" style={{ color: '#ffffff55' }}>vs</Text>
+                        <View style={styles.miniTeam}>
+                            <Text variant="labelSmall" style={styles.miniTeamName}>{match.teamB.name}</Text>
+                            <Text variant="labelMedium" style={styles.miniScore}>
+                                {match.firstInnings.battingTeamId === match.teamB.id
+                                    ? `${match.firstInnings.totalRuns}/${match.firstInnings.totalWickets}`
+                                    : innings.battingTeamId === match.teamB.id
+                                        ? `${innings.totalRuns}/${innings.totalWickets}`
+                                        : '-'}
+                            </Text>
+                        </View>
+                    </View>
+                )}
+
                 <View style={styles.headerTop}>
-                    <Text variant="titleLarge" style={styles.teamName}>{battingTeam.name}</Text>
-                    <Text variant="labelMedium" style={styles.oversText}>
-                        Overs: {Math.floor(innings.currentOver.validBalls / 6) + innings.allOvers.length}.{innings.currentOver.validBalls % 6} / {match.totalOvers}
-                    </Text>
+                    <View>
+                        <Text variant="titleLarge" style={styles.teamName}>{battingTeam.name}</Text>
+                        <Text variant="labelSmall" style={styles.inningsLabel}>
+                            {match.currentInningsNumber === 1 ? '1st Innings' : '2nd Innings'}
+                        </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text variant="labelMedium" style={styles.oversText}>
+                            Overs: {Math.floor(innings.currentOver.validBalls / 6) + innings.allOvers.length}.{innings.currentOver.validBalls % 6} / {match.totalOvers}
+                        </Text>
+                        <IconButton
+                            icon="clipboard-text"
+                            iconColor="#fff"
+                            size={22}
+                            onPress={() => setScorecardVisible(true)}
+                            style={{ marginLeft: 4 }}
+                        />
+                    </View>
                 </View>
                 <View style={styles.scoreContainer}>
                     <Text variant="displayLarge" style={styles.scoreText}>
@@ -150,7 +285,7 @@ export default function MatchScreen() {
                 <View style={styles.targetContainer}>
                     {match.currentInningsNumber === 2 && match.firstInnings && (
                         <Text variant="bodyMedium" style={styles.targetText}>
-                            Target: {match.firstInnings.totalRuns + 1}
+                            Target: {match.firstInnings.totalRuns + 1} | Need {(match.firstInnings.totalRuns + 1) - innings.totalRuns} runs
                         </Text>
                     )}
                 </View>
@@ -236,7 +371,7 @@ export default function MatchScreen() {
                                 innings.currentOver.deliveries.map((d, i) => (
                                     <View key={i} style={[styles.ballCircle, getBallCircleStyle(d)]}>
                                         <Text style={styles.ballText}>
-                                            {d.isWicket ? 'W' : d.extraType !== 'None' ? d.extraType : d.runs}
+                                            {getBallLabel(d)}
                                         </Text>
                                     </View>
                                 ))
@@ -247,6 +382,20 @@ export default function MatchScreen() {
             </ScrollView>
 
             <Surface style={styles.controls} elevation={5}>
+                {canUndo && (
+                    <View style={styles.undoRow}>
+                        <Button
+                            mode="text"
+                            icon="undo"
+                            textColor="#F44336"
+                            onPress={undoLastBall}
+                            compact
+                            style={styles.undoBtn}
+                        >
+                            Undo Last Ball
+                        </Button>
+                    </View>
+                )}
                 <View style={styles.controlGrid}>
                     <Button mode="contained-tonal" style={styles.controlBtnRound} contentStyle={styles.controlBtnContent} labelStyle={styles.controlBtnLabel} onPress={() => handleScore(0)}>0</Button>
                     <Button mode="contained-tonal" style={styles.controlBtnRound} contentStyle={styles.controlBtnContent} labelStyle={styles.controlBtnLabel} onPress={() => handleScore(1)}>1</Button>
@@ -256,10 +405,32 @@ export default function MatchScreen() {
 
                     <Button mode="outlined" style={styles.controlBtnRoundSmall} contentStyle={styles.controlBtnContent} labelStyle={styles.controlLabelSmall} onPress={handleWide}>WD</Button>
                     <Button mode="outlined" style={styles.controlBtnRoundSmall} contentStyle={styles.controlBtnContent} labelStyle={styles.controlLabelSmall} onPress={handleNoBall}>NB</Button>
+                    <Button mode="outlined" style={[styles.controlBtnRoundSmall, styles.byeBtnStyle]} contentStyle={styles.controlBtnContent} labelStyle={styles.byeLabel} onPress={() => openByeDialog('B')}>B</Button>
+                    <Button mode="outlined" style={[styles.controlBtnRoundSmall, styles.byeBtnStyle]} contentStyle={styles.controlBtnContent} labelStyle={styles.byeLabel} onPress={() => openByeDialog('LB')}>LB</Button>
                     <Button mode="contained" buttonColor="#F44336" style={styles.controlBtnRound} contentStyle={styles.controlBtnContent} labelStyle={styles.controlBtnLabel} onPress={handleWicketClick}>W</Button>
                 </View>
             </Surface>
 
+            {/* Bowler Selection Modal */}
+            <BowlerSelectionModal
+                visible={needsBowlerSelection}
+                players={bowlingTeam.players}
+                lastBowlerId={lastBowlerId}
+                onSelect={confirmNewBowler}
+            />
+
+            {/* Scorecard Bottom Sheet */}
+            <ScorecardBottomSheet
+                visible={scorecardVisible}
+                onDismiss={() => setScorecardVisible(false)}
+                innings={innings}
+                battingTeamName={battingTeam.name}
+                bowlingTeamName={bowlingTeam.name}
+                battingPlayers={battingTeam.players}
+                bowlingPlayers={bowlingTeam.players}
+            />
+
+            {/* Innings Complete Modal */}
             <InningsCompleteModal
                 visible={inningsComplete}
                 deliveries={inningsDeliveries}
@@ -267,7 +438,20 @@ export default function MatchScreen() {
                 totalRuns={innings.totalRuns}
                 totalWickets={innings.totalWickets}
                 totalOvers={match.totalOvers}
-                onClose={resetInningsComplete}
+                onClose={handleInningsCompleteClose}
+            />
+
+            {/* Match Result Modal */}
+            <MatchResultModal
+                visible={!!matchResult}
+                result={matchResult?.result || ''}
+                winnerName={matchResult?.winnerName}
+                teamAName={match.teamA.name}
+                teamBName={match.teamB.name}
+                firstInningsScore={firstInningsScore}
+                secondInningsScore={secondInningsScore}
+                totalOvers={match.totalOvers}
+                onSaveAndExit={handleSaveAndExit}
             />
         </SafeAreaView>
     );
@@ -300,6 +484,10 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontWeight: 'bold',
         opacity: 0.9,
+    },
+    inningsLabel: {
+        color: 'rgba(255,255,255,0.6)',
+        marginTop: 2,
     },
     oversText: {
         color: '#fff',
@@ -336,7 +524,7 @@ const styles = StyleSheet.create({
     },
     scrollContent: {
         padding: 16,
-        paddingBottom: 220,
+        paddingBottom: 240,
     },
     card: {
         marginBottom: 16,
@@ -365,6 +553,7 @@ const styles = StyleSheet.create({
     ballText: {
         color: '#fff',
         fontWeight: 'bold',
+        fontSize: 12,
     },
     controls: {
         position: 'absolute',
@@ -381,38 +570,48 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         flexWrap: 'wrap',
         justifyContent: 'center',
-        gap: 16,
+        gap: 12,
     },
     controlBtnRound: {
-        width: 60,
-        height: 60,
-        borderRadius: 30,
+        width: 56,
+        height: 56,
+        borderRadius: 28,
         justifyContent: 'center',
         alignItems: 'center',
-        marginHorizontal: 4,
+        marginHorizontal: 2,
     },
     controlBtnRoundSmall: {
-        width: 60,
-        height: 60,
-        borderRadius: 30,
+        width: 56,
+        height: 56,
+        borderRadius: 28,
         justifyContent: 'center',
         alignItems: 'center',
         borderColor: '#FF9800',
-        marginHorizontal: 4,
+        marginHorizontal: 2,
+    },
+    byeBtnStyle: {
+        borderColor: '#00BCD4',
     },
     controlBtnContent: {
-        height: 60,
-        width: 60,
+        height: 56,
+        width: 56,
     },
     controlBtnLabel: {
-        fontSize: 20,
+        fontSize: 18,
         fontWeight: 'bold',
         marginVertical: 0,
         marginHorizontal: 0,
     },
     controlLabelSmall: {
-        fontSize: 14,
+        fontSize: 13,
         color: '#E65100',
+        fontWeight: 'bold',
+        marginVertical: 0,
+        marginHorizontal: 0,
+    },
+    byeLabel: {
+        fontSize: 13,
+        color: '#00838F',
         fontWeight: 'bold',
         marginVertical: 0,
         marginHorizontal: 0,
@@ -422,5 +621,51 @@ const styles = StyleSheet.create({
     },
     dialogBtn: {
         borderRadius: 8,
+    },
+    byeRunsRow: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        gap: 12,
+    },
+    byeRunBtn: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+    },
+    byeRunBtnContent: {
+        width: 56,
+        height: 56,
+    },
+    byeRunBtnLabel: {
+        fontSize: 20,
+        fontWeight: 'bold',
+    },
+    undoRow: {
+        alignItems: 'flex-end',
+        marginBottom: 4,
+    },
+    undoBtn: {
+        borderRadius: 8,
+    },
+    miniScoreboard: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 16,
+        paddingBottom: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.15)',
+        marginBottom: 8,
+    },
+    miniTeam: {
+        alignItems: 'center',
+    },
+    miniTeamName: {
+        color: 'rgba(255,255,255,0.6)',
+        fontSize: 11,
+    },
+    miniScore: {
+        color: '#fff',
+        fontWeight: 'bold',
     },
 });

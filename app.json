@@ -7,7 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "expo-project",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": false,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.muhammadshahms.expoproject"

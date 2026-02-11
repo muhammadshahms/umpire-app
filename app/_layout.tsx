@@ -71,11 +71,11 @@ export default function RootLayout() {
             },
           }}
         >
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="index" options={{ headerShown: false }} />
           <Stack.Screen name="create-match" options={{ title: 'New Match' }} />
           <Stack.Screen name="add-players" options={{ title: 'Add Players' }} />
           <Stack.Screen name="match/index" options={{ title: 'Live Match' }} />
+          <Stack.Screen name="history" options={{ title: 'Match History' }} />
           <Stack.Screen name="+not-found" />
         </Stack>
         <StatusBar style="auto" />

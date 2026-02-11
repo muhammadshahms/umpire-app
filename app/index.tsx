@@ -35,13 +35,13 @@ export default function HomeScreen() {
 
                 <Button
                     mode="outlined"
-                    onPress={() => { }}
+                    onPress={() => router.push('/history' as any)}
                     style={styles.button}
                     contentStyle={styles.buttonContent}
                     labelStyle={styles.outlinedButtonLabel}
                     icon="history"
                 >
-                    History (Coming Soon)
+                    Match History
                 </Button>
             </View>
         </SafeAreaView>

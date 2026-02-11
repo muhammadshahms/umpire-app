@@ -77,6 +77,20 @@ export interface Match {
     secondInnings?: Innings;
     status: 'NotStarted' | 'InProgress' | 'Completed';
     winnerId?: string;
+    winnerName?: string;
+    result?: string;
     tossWinnerId?: string;
     tossDecision?: 'bat' | 'bowl';
+}
+
+export interface MatchHistoryItem {
+    id: string;
+    date: string;
+    teamAName: string;
+    teamBName: string;
+    overs: number;
+    firstInningsScore: string;
+    secondInningsScore: string;
+    result: string;
+    winnerName?: string;
 }
