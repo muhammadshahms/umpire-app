@@ -19,8 +19,10 @@ import { BowlerSelectionModal } from '../../components/BowlerSelectionModal';
 import { InningsCompleteModal } from '../../components/InningsCompleteModal';
 import { MatchResultModal } from '../../components/MatchResultModal';
 import { ScorecardBottomSheet } from '../../components/ScorecardBottomSheet';
+import { WagonWheelDialog } from '../../components/WagonWheelDialog';
+import { WicketTypeDialog } from '../../components/WicketTypeDialog';
 import { useMatchHistory } from '../../hooks/useMatchHistory';
-import { Team } from '../../models/types';
+import { Team, WagonWheelData, WicketType } from '../../models/types';
 import { useMatchViewModel } from '../../viewmodels/useMatchViewModel';
 
 export default function MatchScreen() {
@@ -55,6 +57,10 @@ export default function MatchScreen() {
     const [scorecardVisible, setScorecardVisible] = useState(false);
     const [byeDialogVisible, setByeDialogVisible] = useState(false);
     const [byeDialogType, setByeDialogType] = useState<'B' | 'LB'>('B');
+
+    // Wagon Wheel State
+    const [wagonWheelVisible, setWagonWheelVisible] = useState(false);
+    const [pendingRuns, setPendingRuns] = useState(0);
 
     useEffect(() => {
         if (teamA && teamB && overs) {
@@ -91,7 +97,17 @@ export default function MatchScreen() {
     const bowlerStats = innings.bowlingStats[innings.currentBowlerId];
 
     const handleScore = (runs: number) => {
-        scoreBall(runs);
+        if (runs >= 1) {
+            setPendingRuns(runs);
+            setWagonWheelVisible(true);
+        } else {
+            scoreBall(0);
+        }
+    };
+
+    const confirmWagonWheel = (data: WagonWheelData | undefined) => {
+        setWagonWheelVisible(false);
+        scoreBall(pendingRuns, 'None', false, undefined, undefined, data);
     };
 
     const handleWide = () => {
@@ -117,11 +133,9 @@ export default function MatchScreen() {
         setWicketDialogVisible(true);
     };
 
-    const confirmWicket = () => {
-        if (selectedOutPlayerId) {
-            scoreBall(0, 'None', true, 'caught', selectedOutPlayerId);
-            setWicketDialogVisible(false);
-        }
+    const confirmWicket = (wicketType: WicketType, playerOutId: string, fielderName?: string) => {
+        scoreBall(0, 'None', true, wicketType, playerOutId);
+        setWicketDialogVisible(false);
     };
 
     const handleInningsCompleteClose = () => {
@@ -169,33 +183,22 @@ export default function MatchScreen() {
     return (
         <SafeAreaView style={styles.container}>
             <Portal>
-                {/* Wicket Dialog */}
-                <Dialog visible={wicketDialogVisible} onDismiss={() => setWicketDialogVisible(false)}>
-                    <Dialog.Title>Wicket! ☝️</Dialog.Title>
-                    <Dialog.Content>
-                        <Text variant="bodyMedium" style={{ marginBottom: 15 }}>Who got out?</Text>
-                        <View style={styles.dialogOptions}>
-                            <Button
-                                mode={selectedOutPlayerId === innings.strikerId ? "contained" : "outlined"}
-                                onPress={() => setSelectedOutPlayerId(innings.strikerId)}
-                                style={styles.dialogBtn}
-                            >
-                                {striker?.name} (Striker)
-                            </Button>
-                            <Button
-                                mode={selectedOutPlayerId === innings.nonStrikerId ? "contained" : "outlined"}
-                                onPress={() => setSelectedOutPlayerId(innings.nonStrikerId)}
-                                style={styles.dialogBtn}
-                            >
-                                {nonStriker?.name}
-                            </Button>
-                        </View>
-                    </Dialog.Content>
-                    <Dialog.Actions>
-                        <Button onPress={() => setWicketDialogVisible(false)}>Cancel</Button>
-                        <Button theme={{ colors: { primary: '#F44336' } }} onPress={confirmWicket}>Confirm Wicket</Button>
-                    </Dialog.Actions>
-                </Dialog>
+                <WicketTypeDialog
+                    visible={wicketDialogVisible}
+                    onDismiss={() => setWicketDialogVisible(false)}
+                    onConfirm={confirmWicket}
+                    striker={striker || { id: '', name: '' }}
+                    nonStriker={nonStriker || { id: '', name: '' }}
+                />
+
+                <WagonWheelDialog
+                    visible={wagonWheelVisible}
+                    onDismiss={() => setWagonWheelVisible(false)}
+                    onConfirm={confirmWagonWheel}
+                    runs={pendingRuns}
+                />
+
+                {/* Bye / Leg Bye Run Selection Dialog */}
 
                 {/* Bye / Leg Bye Run Selection Dialog */}
                 <Dialog visible={byeDialogVisible} onDismiss={() => setByeDialogVisible(false)}>

@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Delivery, ExtraType, Innings, Match, Team, WicketType } from '../models/types';
+import { Delivery, ExtraType, Innings, Match, Team, WagonWheelData, WicketType } from '../models/types';
 
 export const useMatchViewModel = () => {
     const [match, setMatch] = useState<Match | null>(null);
@@ -140,7 +140,7 @@ export const useMatchViewModel = () => {
         });
     };
 
-    const scoreBall = useCallback((runs: number, extraType: ExtraType = 'None', isWicket: boolean = false, wicketType?: WicketType, playerOutId?: string) => {
+    const scoreBall = useCallback((runs: number, extraType: ExtraType = 'None', isWicket: boolean = false, wicketType?: WicketType, playerOutId?: string, wagonWheel?: WagonWheelData) => {
         const innings = getCurrentInnings();
         if (!innings || !match) return;
 
@@ -215,6 +215,7 @@ export const useMatchViewModel = () => {
             bowlerId: innings.currentBowlerId,
             strikerId: innings.strikerId,
             nonStrikerId: innings.nonStrikerId,
+            wagonWheel,
         };
 
         const updatedOver = {

@@ -1,4 +1,4 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -9,7 +9,7 @@ import {
 } from 'react-native-paper';
 import 'react-native-reanimated';
 
-import { useColorScheme } from '@/hooks/useColorScheme';
+// import { useColorScheme } from '@/hooks/useColorScheme';
 
 const customLightTheme = {
   ...MD3LightTheme,
@@ -44,7 +44,7 @@ const customDarkTheme = {
 };
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
+  // const colorScheme = useColorScheme();
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
@@ -53,9 +53,9 @@ export default function RootLayout() {
     return null;
   }
 
-  const isDark = colorScheme === 'dark';
-  const paperTheme = isDark ? customDarkTheme : customLightTheme;
-  const navTheme = isDark ? DarkTheme : DefaultTheme;
+  // const isDark = colorScheme === 'dark';
+  const paperTheme = customLightTheme;
+  const navTheme = DefaultTheme;
 
   return (
     <PaperProvider theme={paperTheme}>
@@ -78,7 +78,7 @@ export default function RootLayout() {
           <Stack.Screen name="history" options={{ title: 'Match History' }} />
           <Stack.Screen name="+not-found" />
         </Stack>
-        <StatusBar style="auto" />
+        <StatusBar style="dark" />
       </ThemeProvider>
     </PaperProvider>
   );

@@ -5,6 +5,7 @@ import { ActivityIndicator, Appbar, Card, SegmentedButtons, Text, useTheme } fro
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MatchScorecard } from '../../components/MatchScorecard';
 import { MatchStats } from '../../components/MatchStats';
+import { MatchWagonWheel } from '../../components/MatchWagonWheel'; // New import
 import { useMatchHistory } from '../../hooks/useMatchHistory';
 import { Match } from '../../models/types';
 
@@ -65,6 +66,7 @@ export default function MatchDetailsScreen() {
                         { value: 'summary', label: 'Summary' },
                         { value: 'scorecard', label: 'Scorecard' },
                         { value: 'stats', label: 'Stats' },
+                        { value: 'wagonwheel', label: 'Wagon Wheel' }, // New tab
                     ]}
                 />
             </View>
@@ -158,6 +160,10 @@ export default function MatchDetailsScreen() {
 
                 {tab === 'stats' && (
                     <MatchStats match={match} />
+                )}
+
+                {tab === 'wagonwheel' && (
+                    <MatchWagonWheel match={match} />
                 )}
             </ScrollView>
         </SafeAreaView>

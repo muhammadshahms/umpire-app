@@ -1,6 +1,12 @@
 export type WicketType = 'bowled' | 'caught' | 'lbw' | 'runout' | 'stumped' | 'hitwicket' | 'other';
 export type ExtraType = 'WD' | 'NB' | 'B' | 'LB' | 'None';
 
+export interface WagonWheelData {
+    angle: number; // Angle in degrees (0 = straight down the pitch/bowler's end?) - let's standardise: 0 = bowler direction (12 o'clock), 90 = 3 o'clock
+    length: number; // 0 to 1 (normalized distance from stump)
+    runs?: number; // Optional runs scored for this shot
+}
+
 export interface Player {
     id: string;
     name: string;
@@ -23,6 +29,7 @@ export interface Delivery {
     bowlerId: string;
     strikerId: string;
     nonStrikerId: string;
+    wagonWheel?: WagonWheelData;
 }
 
 export interface Over {
